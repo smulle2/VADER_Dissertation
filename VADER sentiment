@@ -1,0 +1,5 @@
+install.package("vader")
+library(vader)
+vader_scores <- vader_df(all_tweets_with_user_info$text)
+data_with_vader <- cbind(all_tweets_with_user_info, vader_scores)
+view(data_with_vader)
