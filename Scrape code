@@ -1,0 +1,62 @@
+library(httr)
+library(jsonlite)
+library(dplyr)
+
+# XAPI credentials
+bearer_token <- "bearertoken"
+username <- "targetuser"
+
+get_mentions <- function(username, bearer_token, max_results = 100, pagination_token = NULL) {
+  response <- GET(
+    url = "https://api.twitter.com/2/tweets/search/recent",
+    query = list(
+      query = paste0("to:", username),  
+      max_results = max_results,  
+      tweet.fields = "created_at,author_id,text,conversation_id", 
+      pagination_token = pagination_token 
+    ),
+    add_headers(Authorization = paste("Bearer", bearer_token))
+  )
+  if (http_status(response)$category == "Success") {
+    response_json <- content(response, as = "text", encoding = "UTF-8")
+    tweets <- fromJSON(response_json, flatten = TRUE)
+    tweet_metadata <- tweets$data %>%
+      as_tibble() %>%
+      select(created_at, author_id, text, conversation_id)
+    next_token <- tweets$meta$next_token
+    return(list(tweets = tweet_metadata, next_token = next_token))
+  } else {
+    print("Failed to fetch tweets.")
+    return(NULL)
+  }
+}
+
+total_tweets <- list()
+tweets_per_request <- 100
+pagination_token <- NULL
+max_tweets <- 4000
+
+while (nrow(bind_rows(total_tweets)) < max_tweets) {
+    result <- get_mentions(username, bearer_token, max_results = tweets_per_request, pagination_token = pagination_token)
+    if (!is.null(result) && !is.null(result$tweets)) {
+        tweets <- result$tweets
+        pagination_token <- result$next_token
+        total_tweets <- c(total_tweets, list(tweets))
+    } else {
+        cat("No tweets returned.\n")
+        break
+    }
+    if (is.null(pagination_token)) {
+        cat("No more tweets to fetch.\n")
+        break
+    }
+}
+
+if (length(total_tweets) > 0) {
+    all_tweets <- bind_rows(total_tweets)
+    write.csv(all_tweets, "all_tweets.csv", row.names = FALSE)
+    print(head(all_tweets))
+    cat("CSV file 'all_tweets.csv' has been saved.\n")
+} else {
+    cat("No tweets collected.\n")
+}
